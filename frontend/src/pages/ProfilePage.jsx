@@ -1,115 +1,99 @@
-import { Avatar, Card, Col, Empty, Row, Space, Statistic, Tag, Typography } from 'antd'
-import { BookOutlined, EyeOutlined, HeartOutlined, UserOutlined } from '@ant-design/icons'
-import About from '../components/About.jsx'
+import { BookOutlined, ClockCircleOutlined, PushpinOutlined, StarOutlined } from '@ant-design/icons'
+import { Avatar, Button, Card, Col, Empty, Row, Space, Statistic, Typography } from 'antd'
+import { useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary.js'
 
 const ProfilePage = () => {
-  const { profile, stats } = useLibrary()
-  const recentViewed = stats?.userStats?.recentViewed || []
+  const navigate = useNavigate()
+  const { currentUser, stats } = useLibrary()
+
+  const recentBooks = stats?.userStats?.recentBooks || []
 
   return (
-    <Space orientation="vertical" size={24} style={{ width: '100%' }}>
-      <section className="hero-section">
-        <Row gutter={[24, 24]}>
-          <Col xs={24} lg={16}>
-            <Card className="glass-card hero-panel">
-              <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-                <Tag className="hero-tag" variant="filled">
-                  Профиль
-                </Tag>
-                <Typography.Title className="hero-title">
-                  Статистика читателя и история просмотров
-                </Typography.Title>
-                <Typography.Paragraph className="hero-description">
-                  Здесь собрана ваша активность: сколько книг доступно, что вы добавили в избранное и какие книги уже открывали.
-                </Typography.Paragraph>
-              </Space>
-            </Card>
-          </Col>
-          <Col xs={24} lg={8}>
-            <Card className="glass-card inner-highlight">
-              <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-                <Avatar size={64} className="star-avatar" icon={<UserOutlined />} />
-                <div>
-                  <Typography.Text strong>{profile?.name || 'Пользователь'}</Typography.Text>
-                  <br />
-                  <Typography.Text type="secondary">{profile?.email || 'reader@mail.com'}</Typography.Text>
-                </div>
-                <div className="signal-row">
-                  <span>Роль</span>
-                  <strong>Читатель</strong>
-                </div>
-              </Space>
-            </Card>
-          </Col>
-        </Row>
-      </section>
-
+    <Space direction="vertical" size={24} style={{ width: '100%' }}>
       <Row gutter={[20, 20]}>
-        <Col xs={24} md={8}>
-          <Card className="glass-card insight-card">
-            <Statistic
-              title="Доступно книг"
-              value={stats?.userStats?.totalAvailableBooks || 0}
-              prefix={<BookOutlined />}
-            />
+        <Col xs={24} xl={8}>
+          <Card className="feature-surface profile-card">
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <Avatar size={72} className="profile-avatar">
+                {currentUser?.name?.charAt(0)?.toUpperCase() || 'L'}
+              </Avatar>
+              <div>
+                <Typography.Title level={3} style={{ marginBottom: 4 }}>
+                  {currentUser?.name}
+                </Typography.Title>
+                <Typography.Paragraph className="muted-copy" style={{ marginBottom: 6 }}>
+                  {currentUser?.email}
+                </Typography.Paragraph>
+                <Typography.Text className="muted-copy">
+                  {currentUser?.role === 'teacher' ? 'Преподаватель' : 'Студент'}
+                </Typography.Text>
+              </div>
+              <Typography.Paragraph className="muted-copy" style={{ marginBottom: 0 }}>
+                {currentUser?.bio || 'Пользователь библиотеки.'}
+              </Typography.Paragraph>
+            </Space>
           </Card>
         </Col>
-        <Col xs={24} md={8}>
-          <Card className="glass-card insight-card">
-            <Statistic
-              title="В избранном"
-              value={stats?.userStats?.favoriteCount || 0}
-              prefix={<HeartOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card className="glass-card insight-card">
-            <Statistic
-              title="Просмотров"
-              value={stats?.userStats?.viewedCount || 0}
-              prefix={<EyeOutlined />}
-            />
-          </Card>
+
+        <Col xs={24} xl={16}>
+          <Row gutter={[18, 18]}>
+            <Col xs={24} md={12}>
+              <Card className="feature-surface stat-card">
+                <Statistic title="Доступные книги" value={stats?.userStats?.totalAvailableBooks || 0} prefix={<BookOutlined />} />
+              </Card>
+            </Col>
+            <Col xs={24} md={12}>
+              <Card className="feature-surface stat-card">
+                <Statistic title="Минут чтения" value={stats?.userStats?.readingMinutes || 0} prefix={<ClockCircleOutlined />} />
+              </Card>
+            </Col>
+            <Col xs={24} md={12}>
+              <Card className="feature-surface stat-card">
+                <Statistic title="Сохраненные книги" value={stats?.userStats?.favoriteCount || 0} prefix={<StarOutlined />} />
+              </Card>
+            </Col>
+            <Col xs={24} md={12}>
+              <Card className="feature-surface stat-card">
+                <Statistic title="Закладки" value={stats?.userStats?.bookmarkCount || 0} prefix={<PushpinOutlined />} />
+              </Card>
+            </Col>
+          </Row>
         </Col>
       </Row>
 
-      <Card className="glass-card">
-        <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+      <Card className="feature-surface">
+        <div className="section-head">
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Недавно просмотренные книги
+            Недавно открытые книги
           </Typography.Title>
+          <Button onClick={() => navigate('/library')}>Каталог</Button>
+        </div>
 
-          {recentViewed.length ? (
-            <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-              {recentViewed.map((item) => (
-                <Card key={`${item.id}-${item.viewedAt}`} className="inner-highlight">
-                  <div className="team-member">
-                    <Space>
-                      <Avatar className="table-avatar" icon={<BookOutlined />} />
-                      <div>
-                        <Typography.Text strong>{item.title}</Typography.Text>
-                        <br />
-                        <Typography.Text type="secondary">
-                          {item.author} · {item.categoryName}
-                        </Typography.Text>
-                      </div>
-                    </Space>
-                    <Typography.Text type="secondary">
-                      {new Date(item.viewedAt).toLocaleString('ru-RU')}
-                    </Typography.Text>
-                  </div>
-                </Card>
-              ))}
-            </Space>
-          ) : (
-            <Empty description="Вы еще не открывали книги." />
-          )}
-        </Space>
+        {recentBooks.length ? (
+          <div className="rank-list">
+            {recentBooks.map((book) => (
+              <button
+                key={book.id}
+                type="button"
+                className="rank-item"
+                onClick={() => navigate(`/reader/${book.id}`)}
+              >
+                <span className="rank-number">{String(book.progressPercent || 0).padStart(2, '0')}%</span>
+                <div className="rank-copy">
+                  <strong>{book.title}</strong>
+                  <span>
+                    {book.author} • {book.categoryName}
+                  </span>
+                </div>
+                <span className="rank-meta">Открыть</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Empty description="История чтения пока пуста" />
+        )}
       </Card>
-
-      <About stats={stats} profile={profile} />
     </Space>
   )
 }

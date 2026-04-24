@@ -1,34 +1,108 @@
-import { ConfigProvider } from 'antd'
+import { ConfigProvider, Result, Spin } from 'antd'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import AdminLayout from './layouts/AdminLayout.jsx'
 import UserLayout from './layouts/UserLayout.jsx'
-import AdminPage from './pages/AdminPage.jsx'
-import CatalogPage from './pages/CatalogPage.jsx'
-import FavoritesPage from './pages/FavoritesPage.jsx'
+import ForbiddenPage from './pages/ForbiddenPage.jsx'
+import HomePage from './pages/HomePage.jsx'
+import LibraryPage from './pages/LibraryPage.jsx'
+import LoginPage from './pages/LoginPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
+import ReaderPage from './pages/ReaderPage.jsx'
+import TeacherPage from './pages/TeacherPage.jsx'
 import { LibraryProvider } from './store/LibraryContext.jsx'
-import { appTheme } from './styles/theme.js'
+import { getAppTheme } from './styles/theme.js'
+import { useLibrary } from './hooks/useLibrary.js'
 import './App.css'
+
+const FullscreenLoader = () => (
+  <div className="screen-center">
+    <Spin size="large" />
+  </div>
+)
+
+const ProtectedLayout = () => {
+  const { currentUser, isBootstrapping } = useLibrary()
+
+  if (isBootstrapping) {
+    return <FullscreenLoader />
+  }
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <UserLayout />
+}
+
+const TeacherOnly = ({ children }) => {
+  const { currentUser, isBootstrapping } = useLibrary()
+
+  if (isBootstrapping) {
+    return <FullscreenLoader />
+  }
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (currentUser.role !== 'teacher') {
+    return <ForbiddenPage />
+  }
+
+  return children
+}
+
+const LoginRoute = () => {
+  const { currentUser, isBootstrapping } = useLibrary()
+
+  if (isBootstrapping) {
+    return <FullscreenLoader />
+  }
+
+  if (currentUser) {
+    return <Navigate to="/" replace />
+  }
+
+  return <LoginPage />
+}
+
+const AppRoutes = () => {
+  const { uiTheme } = useLibrary()
+
+  return (
+    <ConfigProvider theme={getAppTheme(uiTheme)}>
+      <Routes>
+        <Route path="/login" element={<LoginRoute />} />
+        <Route element={<ProtectedLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="/library" element={<LibraryPage />} />
+          <Route path="/reader/:bookId" element={<ReaderPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route
+            path="/teacher"
+            element={
+              <TeacherOnly>
+                <TeacherPage />
+              </TeacherOnly>
+            }
+          />
+          <Route path="/forbidden" element={<ForbiddenPage />} />
+          <Route
+            path="*"
+            element={<Result status="404" title="Страница не найдена" subTitle="Проверьте адрес маршрута." />}
+          />
+        </Route>
+      </Routes>
+    </ConfigProvider>
+  )
+}
 
 const App = () => {
   return (
-    <ConfigProvider theme={appTheme}>
-      <BrowserRouter>
-        <LibraryProvider>
-          <Routes>
-            <Route element={<UserLayout />}>
-              <Route path="/" element={<Navigate to="/profile" replace />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/catalog" element={<CatalogPage />} />
-              <Route path="/favorites" element={<FavoritesPage />} />
-            </Route>
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<AdminPage />} />
-            </Route>
-          </Routes>
-        </LibraryProvider>
-      </BrowserRouter>
-    </ConfigProvider>
+    <BrowserRouter>
+      <LibraryProvider>
+        <AppRoutes />
+      </LibraryProvider>
+    </BrowserRouter>
   )
 }
 

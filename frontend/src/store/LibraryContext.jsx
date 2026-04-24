@@ -3,154 +3,236 @@ import { message } from 'antd'
 import { api } from '../utils/api.js'
 import { LibraryContext } from './library-context.js'
 
-const ADMIN_TOKEN_KEY = 'libhub_admin_token'
+const SESSION_TOKEN_KEY = 'libhub_session_token'
+const THEME_KEY = 'libhub_theme'
 
 export const LibraryProvider = ({ children }) => {
   const [messageApi, contextHolder] = message.useMessage()
-  const [profile, setProfile] = useState(null)
+  const [sessionToken, setSessionToken] = useState('')
+  const [currentUser, setCurrentUser] = useState(null)
   const [categories, setCategories] = useState([])
   const [favoriteIds, setFavoriteIds] = useState([])
   const [stats, setStats] = useState(null)
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [adminToken, setAdminToken] = useState('')
+  const [uiTheme, setUiTheme] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'light'
+    }
+
+    const savedTheme = window.localStorage.getItem(THEME_KEY)
+    return savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'light'
+  })
   const [isBootstrapping, setIsBootstrapping] = useState(true)
 
-  const refreshShared = async (token = adminToken) => {
+  const resetSession = () => {
+    setSessionToken('')
+    setCurrentUser(null)
+    setCategories([])
+    setFavoriteIds([])
+    setStats(null)
+    window.localStorage.removeItem(SESSION_TOKEN_KEY)
+  }
+
+  const refreshShared = async (token = sessionToken) => {
+    if (!token) {
+      resetSession()
+      return
+    }
+
     const [profileData, categoriesData, favoritesData, statsData] = await Promise.all([
-      api.getProfile(),
-      api.getCategories(),
-      api.getFavorites(),
-      api.getStats(token || undefined),
+      api.getMe(token),
+      api.getCategories(token),
+      api.getFavorites(token),
+      api.getStats(token),
     ])
 
-    setProfile(profileData)
+    setCurrentUser(profileData)
     setCategories(categoriesData)
     setFavoriteIds(favoritesData)
     setStats(statsData)
   }
 
   useEffect(() => {
+    document.body.dataset.theme = uiTheme
+    window.localStorage.setItem(THEME_KEY, uiTheme)
+  }, [uiTheme])
+
+  useEffect(() => {
     const bootstrap = async () => {
-      const storedToken = window.localStorage.getItem(ADMIN_TOKEN_KEY)
+      const storedToken = window.localStorage.getItem(SESSION_TOKEN_KEY)
+
+      if (!storedToken) {
+        setIsBootstrapping(false)
+        return
+      }
 
       try {
-        if (storedToken) {
-          const session = await api.checkAdminSession(storedToken)
-          if (session.isAdmin) {
-            setAdminToken(storedToken)
-            setIsAdmin(true)
-            await refreshShared(storedToken)
-            return
-          }
+        const session = await api.getSession(storedToken)
+        if (session.authenticated && session.user) {
+          setSessionToken(storedToken)
+          setCurrentUser(session.user)
+          await refreshShared(storedToken)
+        } else {
+          resetSession()
         }
-
-        window.localStorage.removeItem(ADMIN_TOKEN_KEY)
-        await refreshShared('')
       } catch (error) {
+        resetSession()
         messageApi.error(error.message)
       } finally {
         setIsBootstrapping(false)
       }
     }
 
-    bootstrap()
+    void bootstrap()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const loginAdmin = async (password) => {
-    const result = await api.loginAdmin(password)
-    window.localStorage.setItem(ADMIN_TOKEN_KEY, result.token)
-    setAdminToken(result.token)
-    setIsAdmin(true)
+  const login = async (email, password) => {
+    const result = await api.login(email, password)
+    window.localStorage.setItem(SESSION_TOKEN_KEY, result.token)
+    setSessionToken(result.token)
+    setCurrentUser(result.user)
     await refreshShared(result.token)
-    messageApi.success('Вход в админ-панель выполнен.')
   }
 
-  const logoutAdmin = async () => {
-    window.localStorage.removeItem(ADMIN_TOKEN_KEY)
-    setAdminToken('')
-    setIsAdmin(false)
-    await refreshShared('')
-    messageApi.success('Режим администратора выключен.')
+  const logout = async () => {
+    const token = sessionToken
+    resetSession()
+
+    try {
+      if (token) {
+        await api.logout(token)
+      }
+    } catch {
+      // noop for local development
+    }
   }
 
-  const loadBooks = (query = {}) => api.getBooks(query, adminToken || undefined)
+  const loadBooks = (query = {}) => api.getBooks(query, sessionToken)
+  const loadBook = (bookId) => api.getBook(bookId, sessionToken)
+  const getBookFileUrl = (bookId) => api.getBookFileUrl(bookId)
+  const trackView = (bookId) => api.recordView(bookId, sessionToken)
 
   const toggleFavorite = async (book) => {
     if (book.isFavorite) {
-      await api.removeFavorite(book.id)
-      messageApi.success('Книга удалена из избранного.')
+      await api.removeFavorite(book.id, sessionToken)
     } else {
-      await api.addFavorite(book.id)
-      messageApi.success('Книга добавлена в избранное.')
+      await api.addFavorite(book.id, sessionToken)
     }
 
     await refreshShared()
   }
 
-  const trackView = async (bookId) => {
-    await api.recordView(bookId)
+  const loadProgress = (bookId) => api.getBookProgress(bookId, sessionToken)
+
+  const saveProgress = async (bookId, payload) => {
+    await api.saveBookProgress(bookId, payload, sessionToken)
+  }
+
+  const loadBookmarks = (bookId) => api.getBookmarks(bookId, sessionToken)
+  const createBookmark = async (bookId, payload) => {
+    const result = await api.createBookmark(bookId, payload, sessionToken)
+    await refreshShared()
+    return result
+  }
+
+  const deleteBookmark = async (bookmarkId) => {
+    await api.deleteBookmark(bookmarkId, sessionToken)
+    await refreshShared()
+  }
+
+  const loadNotes = (bookId) => api.getNotes(bookId, sessionToken)
+  const createNote = async (bookId, payload) => {
+    const result = await api.createNote(bookId, payload, sessionToken)
+    await refreshShared()
+    return result
+  }
+
+  const deleteNote = async (noteId) => {
+    await api.deleteNote(noteId, sessionToken)
     await refreshShared()
   }
 
   const saveBook = async (payload, editingBookId) => {
     if (editingBookId) {
-      const result = await api.updateBook(editingBookId, payload, adminToken)
+      const result = await api.updateBook(editingBookId, payload, sessionToken)
       await refreshShared()
-      messageApi.success('Книга обновлена.')
       return result
     }
 
-    const result = await api.createBook(payload, adminToken)
+    const result = await api.createBook(payload, sessionToken)
     await refreshShared()
-    messageApi.success('Публикация добавлена.')
+    return result
+  }
+
+  const importBookByLink = async (payload) => {
+    const result = await api.importBookByLink(payload, sessionToken)
+    await refreshShared()
+    return result
+  }
+
+  const importBooksFromFolder = async (payload) => {
+    const result = await api.importBooksFromFolder(payload, sessionToken)
+    await refreshShared()
     return result
   }
 
   const deleteBook = async (bookId) => {
-    await api.deleteBook(bookId, adminToken)
+    await api.deleteBook(bookId, sessionToken)
     await refreshShared()
-    messageApi.success('Книга удалена.')
   }
 
   const togglePublish = async (book) => {
-    await api.publishBook(book.id, !book.published, adminToken)
+    await api.publishBook(book.id, !book.published, sessionToken)
     await refreshShared()
-    messageApi.success(book.published ? 'Книга переведена в черновик.' : 'Книга опубликована.')
   }
 
   const createCategory = async (name) => {
-    const result = await api.createCategory({ name }, adminToken)
+    const result = await api.createCategory({ name }, sessionToken)
     await refreshShared()
-    messageApi.success('Категория добавлена.')
     return result
   }
 
   const deleteCategory = async (categoryId) => {
-    await api.deleteCategory(categoryId, adminToken)
+    await api.deleteCategory(categoryId, sessionToken)
     await refreshShared()
-    messageApi.success('Категория удалена.')
+  }
+
+  const switchTheme = (nextTheme) => {
+    setUiTheme(nextTheme)
   }
 
   const value = {
-    profile,
+    sessionToken,
+    currentUser,
     categories,
     favoriteIds,
     stats,
-    isAdmin,
-    adminToken,
+    uiTheme,
     isBootstrapping,
     refreshShared,
-    loginAdmin,
-    logoutAdmin,
+    login,
+    logout,
     loadBooks,
-    toggleFavorite,
+    loadBook,
+    getBookFileUrl,
     trackView,
+    toggleFavorite,
+    loadProgress,
+    saveProgress,
+    loadBookmarks,
+    createBookmark,
+    deleteBookmark,
+    loadNotes,
+    createNote,
+    deleteNote,
     saveBook,
+    importBookByLink,
+    importBooksFromFolder,
     deleteBook,
     togglePublish,
     createCategory,
     deleteCategory,
+    switchTheme,
     notifySuccess: messageApi.success,
     notifyError: messageApi.error,
   }

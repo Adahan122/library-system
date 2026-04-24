@@ -1,108 +1,145 @@
-import { Avatar, Badge, Breadcrumb, Button, Drawer, Layout, Menu, Space, Typography } from 'antd'
-import { BookOutlined, HeartOutlined, MenuOutlined, NotificationOutlined, UserOutlined } from '@ant-design/icons'
+import { Avatar, Button, Drawer, Space, Typography } from 'antd'
+import {
+  BookOutlined,
+  HomeOutlined,
+  LogoutOutlined,
+  MenuOutlined,
+  MoonOutlined,
+  ReadOutlined,
+  SunOutlined,
+  UserOutlined,
+} from '@ant-design/icons'
 import { useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useLibrary } from '../hooks/useLibrary.js'
 
-const { Header, Content, Footer } = Layout
-
-const items = [
-  { key: '/profile', icon: <UserOutlined />, label: 'Профиль' },
-  { key: '/catalog', icon: <BookOutlined />, label: 'Каталог' },
-  { key: '/favorites', icon: <HeartOutlined />, label: 'Избранное' },
-]
-
-const titleMap = {
-  '/profile': 'Профиль',
-  '/catalog': 'Каталог',
-  '/favorites': 'Избранное',
-}
+const navLinkClassName = ({ isActive }) => `nav-link${isActive ? ' nav-link-active' : ''}`
 
 const UserLayout = () => {
-  const [open, setOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const { currentUser, logout, uiTheme, switchTheme } = useLibrary()
 
-  const breadcrumbItems = useMemo(
-    () => [{ title: 'Пользователь' }, { title: titleMap[location.pathname] ?? 'Раздел' }],
-    [location.pathname],
-  )
+  const navItems = useMemo(() => {
+    const items = [
+      { to: '/', label: 'Главная', icon: <HomeOutlined /> },
+      { to: '/library', label: 'Каталог', icon: <BookOutlined /> },
+      { to: '/profile', label: 'Профиль', icon: <UserOutlined /> },
+    ]
 
-  const handleSelect = ({ key }) => {
-    setOpen(false)
-    navigate(key)
+    if (currentUser?.role === 'teacher') {
+      items.push({ to: '/teacher', label: 'Фонд', icon: <ReadOutlined /> })
+    }
+
+    return items
+  }, [currentUser?.role])
+
+  const titleMap = {
+    '/': 'Главная',
+    '/library': 'Каталог библиотеки',
+    '/profile': 'Профиль',
+    '/teacher': 'Управление фондом',
   }
 
+  const currentTitle = location.pathname.startsWith('/reader/')
+    ? 'Чтение'
+    : titleMap[location.pathname] || 'Раздел библиотеки'
+
   return (
-    <Layout className="app-shell">
-      <Header className="app-header">
-        <div className="header-brand">
-          <div className="brand-mark">
+    <div className="app-shell">
+      <header className="app-header">
+        <button className="brand-block" type="button" onClick={() => navigate('/')}>
+          <span className="brand-mark">
             <BookOutlined />
-          </div>
-          <div>
+          </span>
+          <span>
             <Typography.Text strong className="brand-title">
-              LibHub Reader
+              LibHub
             </Typography.Text>
-            <Typography.Text type="secondary" className="brand-subtitle">
-              Личный кабинет читателя
+            <Typography.Text className="brand-subtitle">
+              Электронная библиотека
             </Typography.Text>
+          </span>
+        </button>
+
+        <nav className="desktop-nav" aria-label="Навигация">
+          {navItems.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={navLinkClassName}>
+              {item.icon}
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <Space size={10} className="header-actions">
+          <Button
+            type="text"
+            className="theme-switch"
+            icon={uiTheme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            onClick={() => switchTheme(uiTheme === 'dark' ? 'light' : 'dark')}
+          />
+          <div className="header-user">
+            <Avatar className="header-avatar">
+              {currentUser?.name?.charAt(0)?.toUpperCase() || 'L'}
+            </Avatar>
+            <div className="header-user-copy">
+              <strong>{currentUser?.name}</strong>
+              <span>{currentUser?.role === 'teacher' ? 'Преподаватель' : 'Студент'}</span>
+            </div>
           </div>
-        </div>
-
-        <Menu
-          className="desktop-menu"
-          mode="horizontal"
-          selectedKeys={[location.pathname]}
-          items={items}
-          onClick={handleSelect}
-        />
-
-        <Space size={12} className="header-actions">
-          <Badge dot>
-            <Button type="text" shape="circle" icon={<NotificationOutlined />} />
-          </Badge>
-          <Button type="default" className="desktop-action" onClick={() => navigate('/favorites')}>
-            К избранному
+          <Button className="desktop-logout" icon={<LogoutOutlined />} onClick={logout}>
+            Выйти
           </Button>
-          <Button type="primary" className="desktop-action" onClick={() => navigate('/admin')}>
-            Админка
-          </Button>
-          <Avatar className="header-avatar">A</Avatar>
           <Button
             type="text"
             shape="circle"
             icon={<MenuOutlined />}
             className="mobile-menu-button"
-            onClick={() => setOpen(true)}
+            onClick={() => setDrawerOpen(true)}
           />
         </Space>
-      </Header>
+      </header>
 
-      <Content className="app-content">
+      <main className="app-main">
+        <section className="page-intro">
+          <Typography.Title level={2} className="page-title">
+            {currentTitle}
+          </Typography.Title>
+        </section>
+
         <div className="page-frame">
-          <Breadcrumb items={breadcrumbItems} className="page-breadcrumb" />
           <Outlet />
         </div>
-      </Content>
+      </main>
 
-      <Footer className="app-footer">
-        <Typography.Text type="secondary">
-          Читательская зона: просмотр, статистика и избранные книги
-        </Typography.Text>
-      </Footer>
-
-      <Drawer title="Разделы" placement="right" open={open} onClose={() => setOpen(false)}>
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={items.map((item) => ({
-            ...item,
-            label: <NavLink to={item.key}>{item.label}</NavLink>,
-          }))}
-          onClick={handleSelect}
-        />
+      <Drawer title="Разделы" placement="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        <div className="mobile-nav">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              className={navLinkClassName}
+              onClick={() => setDrawerOpen(false)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+          <Button
+            className="mobile-logout"
+            icon={<LogoutOutlined />}
+            onClick={() => {
+              setDrawerOpen(false)
+              void logout()
+            }}
+          >
+            Выйти
+          </Button>
+        </div>
       </Drawer>
-    </Layout>
+    </div>
   )
 }
 
