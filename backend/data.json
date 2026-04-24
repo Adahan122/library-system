@@ -1,0 +1,25 @@
+{
+  "profile": {
+    "id": "reader-1",
+    "name": "Айдана",
+    "email": "reader@mail.com",
+    "role": "reader"
+  },
+  "categories": [
+    {
+      "id": "cat-classic",
+      "name": "Классика"
+    },
+    {
+      "id": "cat-fantasy",
+      "name": "Фэнтези"
+    },
+    {
+      "id": "cat-psychology",
+      "name": "Психология"
+    }
+  ],
+  "books": [],
+  "favorites": [],
+  "views": []
+}
