@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: libhub-web
+    runtime: node
+    plan: free
+    buildCommand: npm ci --prefix frontend && npm run build --prefix frontend
+    startCommand: node backend/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: DJANGO_API_ORIGIN
+        value: https://libhub-django.onrender.com
+      - key: LIBHUB_DATA_DIR
+        value: /opt/render/project/src/backend/storage
+
+  - type: web
+    name: libhub-django
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python manage.py migrate
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/books/
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "true"
+      - key: LIBHUB_STORAGE_DIR
+        value: /opt/render/project/src/backend/storage

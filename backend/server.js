@@ -1,14 +1,22 @@
 ﻿import { randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
-import { URL } from 'node:url'
+import { Readable } from 'node:stream'
+import { URL, fileURLToPath } from 'node:url'
 
 const PORT = Number(process.env.PORT || 4000)
 const HOST = process.env.HOST || '0.0.0.0'
-const DATA_PATH = new URL('./data.json', import.meta.url)
-const SQLITE_DB_PATH = new URL('./db.sqlite3', import.meta.url)
+const BACKEND_DIR = fileURLToPath(new URL('.', import.meta.url))
+const REPO_DIR = path.resolve(BACKEND_DIR, '..')
+const DATA_DIR = process.env.LIBHUB_DATA_DIR?.trim()
+  ? path.resolve(process.env.LIBHUB_DATA_DIR)
+  : BACKEND_DIR
+const DATA_PATH = path.join(DATA_DIR, 'data.json')
+const SQLITE_DB_PATH = path.join(DATA_DIR, 'db.sqlite3')
+const FRONTEND_DIST_DIR = path.join(REPO_DIR, 'frontend', 'dist')
+const DJANGO_API_ORIGIN = (process.env.DJANGO_API_ORIGIN || '').trim().replace(/\/+$/, '')
 
 const sessions = new Map()
 const DEVELOPER_USER_ID = 'developer-root'
@@ -40,6 +48,37 @@ const CONTENT_TYPES = {
   html: 'text/html; charset=utf-8',
   text: 'text/plain; charset=utf-8',
 }
+
+const STATIC_CONTENT_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.gif': 'image/gif',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'host',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+])
 
 const COMMENT_BODY_LIMIT = 800
 const BLOCKED_COMMENT_STEMS = [
@@ -217,6 +256,130 @@ const jsonHeaders = {
 const sendJson = (response, statusCode, payload) => {
   response.writeHead(statusCode, jsonHeaders)
   response.end(JSON.stringify(payload))
+}
+
+const ensureStorageFileParent = async (filePath) => {
+  await mkdir(path.dirname(filePath), { recursive: true })
+}
+
+const isSafeChildPath = (candidatePath, basePath) =>
+  candidatePath === basePath || candidatePath.startsWith(`${basePath}${path.sep}`)
+
+const buildForwardHeaders = (headers) => {
+  const forwardHeaders = new Headers()
+
+  Object.entries(headers).forEach(([key, value]) => {
+    const normalizedKey = key.toLowerCase()
+    if (!value || HOP_BY_HOP_HEADERS.has(normalizedKey)) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      forwardHeaders.set(key, value.join(', '))
+      return
+    }
+
+    forwardHeaders.set(key, value)
+  })
+
+  return forwardHeaders
+}
+
+const serveStaticFile = async (response, filePath, extraHeaders = {}, method = 'GET') => {
+  const extension = path.extname(filePath).toLowerCase()
+  response.writeHead(200, {
+    'Content-Type': STATIC_CONTENT_TYPES[extension] || 'application/octet-stream',
+    ...extraHeaders,
+  })
+
+  if (method === 'HEAD') {
+    response.end()
+    return
+  }
+
+  createReadStream(filePath).pipe(response)
+}
+
+const serveFrontendApp = async (pathname, response, method = 'GET') => {
+  if (!existsSync(FRONTEND_DIST_DIR)) {
+    sendJson(response, 503, { message: 'Frontend build not found. Run the frontend build first.' })
+    return true
+  }
+
+  const decodedPath = decodeURIComponent(pathname)
+  const normalizedPath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '')
+  const candidatePath = path.resolve(FRONTEND_DIST_DIR, normalizedPath)
+
+  if (isSafeChildPath(candidatePath, FRONTEND_DIST_DIR) && existsSync(candidatePath)) {
+    const fileStats = await stat(candidatePath).catch(() => null)
+    if (fileStats?.isFile()) {
+      await serveStaticFile(response, candidatePath, {}, method)
+      return true
+    }
+  }
+
+  const indexPath = path.join(FRONTEND_DIST_DIR, 'index.html')
+  if (!existsSync(indexPath)) {
+    sendJson(response, 503, { message: 'Frontend index.html was not found in the build output.' })
+    return true
+  }
+
+  if (path.extname(decodedPath)) {
+    sendJson(response, 404, { message: 'Static asset not found.' })
+    return true
+  }
+
+  await serveStaticFile(response, indexPath, { 'Cache-Control': 'no-cache' }, method)
+  return true
+}
+
+const proxyDjangoRequest = async (request, response, url) => {
+  if (!DJANGO_API_ORIGIN) {
+    sendJson(response, 502, {
+      message: 'Django API proxy is not configured. Set DJANGO_API_ORIGIN for this service.',
+    })
+    return true
+  }
+
+  const targetPath = url.pathname === '/django-api' ? '/api/' : `/api${url.pathname.slice('/django-api'.length)}`
+  const targetUrl = new URL(`${targetPath}${url.search}`, DJANGO_API_ORIGIN)
+  const requestBody =
+    request.method === 'GET' || request.method === 'HEAD' ? undefined : request
+
+  let proxiedResponse
+  try {
+    proxiedResponse = await fetch(targetUrl, {
+      method: request.method,
+      headers: buildForwardHeaders(request.headers),
+      body: requestBody,
+      ...(requestBody ? { duplex: 'half' } : {}),
+    })
+  } catch (error) {
+    sendJson(response, 502, {
+      message:
+        error instanceof Error && error.message
+          ? `Failed to reach Django service: ${error.message}`
+          : 'Failed to reach Django service.',
+    })
+    return true
+  }
+
+  const responseHeaders = {}
+  proxiedResponse.headers.forEach((value, key) => {
+    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+      responseHeaders[key] = value
+    }
+  })
+
+  response.writeHead(proxiedResponse.status, responseHeaders)
+
+  if (!proxiedResponse.body || request.method === 'HEAD') {
+    response.end()
+    return true
+  }
+
+  Readable.fromWeb(proxiedResponse.body).pipe(response)
+  return true
 }
 
 const parseBody = async (request) => {
@@ -703,6 +866,8 @@ const migrateData = (data) => {
 }
 
 const loadData = async () => {
+  await ensureStorageFileParent(DATA_PATH)
+
   if (!existsSync(DATA_PATH)) {
     const initialData = migrateData(cloneDefaultData())
     await writeFile(DATA_PATH, JSON.stringify(initialData, null, 2), 'utf-8')
@@ -715,6 +880,7 @@ const loadData = async () => {
 
 const saveData = async (data) => {
   const normalizedData = migrateData(data)
+  await ensureStorageFileParent(DATA_PATH)
   await writeFile(DATA_PATH, JSON.stringify(normalizedData, null, 2), 'utf-8')
   return normalizedData
 }
@@ -757,12 +923,16 @@ const getStorageFileStatus = async (fileUrl, relativePath, label) => {
 
 const getDatabaseMonitor = async (data = null) => {
   const [jsonStore, sqliteStore] = await Promise.all([
-    getStorageFileStatus(DATA_PATH, 'backend/data.json', 'Node data.json'),
-    getStorageFileStatus(SQLITE_DB_PATH, 'backend/db.sqlite3', 'Django db.sqlite3'),
+    getStorageFileStatus(DATA_PATH, path.relative(REPO_DIR, DATA_PATH) || 'data.json', 'Node data.json'),
+    getStorageFileStatus(
+      SQLITE_DB_PATH,
+      path.relative(REPO_DIR, SQLITE_DB_PATH) || 'db.sqlite3',
+      'Django db.sqlite3',
+    ),
   ])
 
   return {
-    ok: jsonStore.ok && sqliteStore.ok,
+    ok: jsonStore.ok,
     checkedAt: new Date().toISOString(),
     jsonStore: data
       ? {
@@ -1478,6 +1648,11 @@ createServer(async (request, response) => {
   const segments = pathname.split('/').filter(Boolean)
 
   try {
+    if (pathname === '/django-api' || pathname.startsWith('/django-api/')) {
+      await proxyDjangoRequest(request, response, url)
+      return
+    }
+
     if (pathname === '/api/health' && request.method === 'GET') {
       const database = await getDatabaseMonitor()
       sendJson(response, 200, {
@@ -2412,6 +2587,11 @@ createServer(async (request, response) => {
       )
       await saveData(data)
       sendJson(response, 200, { ok: true })
+      return
+    }
+
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      await serveFrontendApp(pathname, response, request.method)
       return
     }
 

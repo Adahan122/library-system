@@ -3,9 +3,11 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+STORAGE_DIR = Path(os.getenv('LIBHUB_STORAGE_DIR', BASE_DIR))
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 SECRET_KEY = 'django-insecure-libhub-dev-key'
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -51,7 +53,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': STORAGE_DIR / 'db.sqlite3',
     }
 }
 
@@ -63,7 +65,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = STORAGE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
