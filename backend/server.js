@@ -1,5 +1,5 @@
 ﻿import { randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
@@ -15,6 +15,7 @@ const DATA_DIR = process.env.LIBHUB_DATA_DIR?.trim()
   : BACKEND_DIR
 const DATA_PATH = path.join(DATA_DIR, 'data.json')
 const SQLITE_DB_PATH = path.join(DATA_DIR, 'db.sqlite3')
+const DEFAULT_DATA_TEMPLATE_PATH = path.join(BACKEND_DIR, 'default-data.json')
 const FRONTEND_DIST_DIR = path.join(REPO_DIR, 'frontend', 'dist')
 const DJANGO_API_ORIGIN = (process.env.DJANGO_API_ORIGIN || '').trim().replace(/\/+$/, '')
 
@@ -759,7 +760,14 @@ const normalizeBookRecord = (book, ownerId, categories) => {
   }
 }
 
-const cloneDefaultData = () => JSON.parse(JSON.stringify(defaultData))
+const cloneDefaultData = () => {
+  try {
+    const template = readFileSync(DEFAULT_DATA_TEMPLATE_PATH, 'utf-8')
+    return JSON.parse(template)
+  } catch {
+    return JSON.parse(JSON.stringify(defaultData))
+  }
+}
 
 const migrateData = (data) => {
   const source = data && typeof data === 'object' ? data : {}
