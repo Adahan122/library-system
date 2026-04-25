@@ -1,8 +1,11 @@
 import { BookOutlined, FireOutlined, SearchOutlined, TagsOutlined } from '@ant-design/icons'
-import { Button, Card, Col, Input, Row, Skeleton, Space, Tag, Typography } from 'antd'
+import { Button, Card, Col, Empty, Input, Row, Skeleton, Space, Tag, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary.js'
+import { getBookCoverStyle, getBookPublicationLabel } from '../utils/formatters.js'
+
+const STUDENT_GUIDE_KEY = 'libhub_show_student_guide'
 
 const HomePage = () => {
   const navigate = useNavigate()
@@ -10,6 +13,7 @@ const HomePage = () => {
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [showStudentGuide, setShowStudentGuide] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -39,6 +43,12 @@ const HomePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (currentUser?.role === 'student' && window.sessionStorage.getItem(STUDENT_GUIDE_KEY) === '1') {
+      setShowStudentGuide(true)
+    }
+  }, [currentUser?.role])
+
   const latestBooks = books.slice(0, 4)
   const popularBooks = useMemo(
     () => [...books].sort((left, right) => right.openCount - left.openCount).slice(0, 6),
@@ -55,8 +65,56 @@ const HomePage = () => {
       ? stats?.teacherStats?.totalViews || 0
       : stats?.userStats?.totalViews || 0
 
+  const openSearch = () => {
+    const trimmedSearch = search.trim()
+    navigate(trimmedSearch ? `/library?search=${encodeURIComponent(trimmedSearch)}` : '/library')
+  }
+
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
+      {showStudentGuide ? (
+        <Card className="feature-surface student-guide-card">
+          <div className="section-head">
+            <div>
+              <Tag color="blue">Подсказка для студента</Tag>
+              <Typography.Title level={3} style={{ margin: '12px 0 6px' }}>
+                Как пользоваться библиотекой
+              </Typography.Title>
+              <Typography.Paragraph className="muted-copy" style={{ marginBottom: 0 }}>
+                Сначала откройте каталог, затем сохраните нужные книги и обсуждайте их в комментариях.
+              </Typography.Paragraph>
+            </div>
+            <Button
+              onClick={() => {
+                window.sessionStorage.removeItem(STUDENT_GUIDE_KEY)
+                setShowStudentGuide(false)
+              }}
+            >
+              Понятно
+            </Button>
+          </div>
+
+          <div className="student-guide-grid">
+            <div className="student-guide-step">
+              <strong>1. Откройте каталог</strong>
+              <span>Ищите книги по названию, автору или разделу.</span>
+            </div>
+            <div className="student-guide-step">
+              <strong>2. Сохраните книгу</strong>
+              <span>После нажатия книга попадёт на страницу сохранённых книг.</span>
+            </div>
+            <div className="student-guide-step">
+              <strong>3. Читайте с прогрессом</strong>
+              <span>Система запомнит, где вы остановились, и покажет прогресс.</span>
+            </div>
+            <div className="student-guide-step">
+              <strong>4. Пишите комментарии</strong>
+              <span>Можно отвечать другим студентам, ставить лайки и обсуждать книгу.</span>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
       <Card className="library-hero">
         <div className="library-hero-grid">
           <div>
@@ -65,7 +123,8 @@ const HomePage = () => {
               Электронная библиотека с новыми поступлениями, разделами и удобным чтением.
             </Typography.Title>
             <Typography.Paragraph className="hero-description">
-              Логика каталога построена вокруг библиотечного фонда: новые книги, популярные книги, разделы и быстрый переход к чтению.
+              Каталог построен вокруг библиотечного фонда: новые книги, популярные материалы, быстрый
+              поиск и переход к чтению без лишних шагов.
             </Typography.Paragraph>
 
             <div className="hero-search">
@@ -74,14 +133,9 @@ const HomePage = () => {
                 value={search}
                 placeholder="Поиск книги, автора или темы"
                 onChange={(event) => setSearch(event.target.value)}
-                onPressEnter={() => navigate(`/library?search=${encodeURIComponent(search)}`)}
+                onPressEnter={openSearch}
               />
-              <Button
-                type="primary"
-                size="large"
-                icon={<SearchOutlined />}
-                onClick={() => navigate(`/library?search=${encodeURIComponent(search)}`)}
-              >
+              <Button type="primary" size="large" icon={<SearchOutlined />} onClick={openSearch}>
                 Найти
               </Button>
             </div>
@@ -106,22 +160,20 @@ const HomePage = () => {
 
       <Card className="feature-surface">
         <div className="section-head">
-          <div>
-            <Typography.Title level={3} style={{ margin: 0 }}>
-              Новые поступления
-            </Typography.Title>
-          </div>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            Новые поступления
+          </Typography.Title>
           <Button onClick={() => navigate('/library')}>Все книги</Button>
         </div>
 
         {loading ? (
           <Skeleton active paragraph={{ rows: 6 }} />
-        ) : (
+        ) : latestBooks.length ? (
           <div className="catalog-grid">
             {latestBooks.map((book) => (
               <Card key={book.id} className="catalog-card">
-                <div className="book-cover" style={{ background: `linear-gradient(135deg, ${book.coverTone}, #0f172a)` }}>
-                  <span className="book-year">{book.publishYear}</span>
+                <div className="book-cover" style={getBookCoverStyle(book)}>
+                  <span className="book-year">{getBookPublicationLabel(book)}</span>
                   <strong>{book.title}</strong>
                   <span>{book.author}</span>
                 </div>
@@ -142,6 +194,8 @@ const HomePage = () => {
               </Card>
             ))}
           </div>
+        ) : (
+          <Empty description="Книги пока не загружены" />
         )}
       </Card>
 
@@ -157,7 +211,7 @@ const HomePage = () => {
 
             {loading ? (
               <Skeleton active paragraph={{ rows: 8 }} />
-            ) : (
+            ) : popularBooks.length ? (
               <div className="rank-list">
                 {popularBooks.map((book, index) => (
                   <button
@@ -170,13 +224,15 @@ const HomePage = () => {
                     <div className="rank-copy">
                       <strong>{book.title}</strong>
                       <span>
-                        {book.author} • {book.publishYear}
+                        {book.author} • {getBookPublicationLabel(book)}
                       </span>
                     </div>
                     <span className="rank-meta">{book.openCount} открытий</span>
                   </button>
                 ))}
               </div>
+            ) : (
+              <Empty description="Популярные книги появятся после первых открытий" />
             )}
           </Card>
         </Col>
@@ -213,7 +269,7 @@ const HomePage = () => {
             <BookOutlined />
             <div>
               <strong>Каталог фонда</strong>
-              <span>Новые поступления, популярное и разделы библиотеки</span>
+              <span>Новые поступления, популярные книги и разделы библиотеки</span>
             </div>
           </div>
           <div className="portal-cell">

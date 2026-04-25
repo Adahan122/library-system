@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Avatar, Button, Card, Empty, Space, Tag, Typography } from 'antd'
 import { BookOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary.js'
 
 const FavoritesPage = () => {
-  const { loadBooks, toggleFavorite, trackView, notifyError } = useLibrary()
+  const navigate = useNavigate()
+  const { loadBooks, toggleFavorite, notifyError } = useLibrary()
   const [favorites, setFavorites] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -20,6 +22,15 @@ const FavoritesPage = () => {
     }
   }
 
+  const handleRemoveFavorite = async (book) => {
+    try {
+      await toggleFavorite(book)
+      await fetchFavorites()
+    } catch (error) {
+      notifyError(error.message)
+    }
+  }
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void fetchFavorites()
@@ -30,22 +41,22 @@ const FavoritesPage = () => {
   }, [])
 
   return (
-    <Space orientation="vertical" size={24} style={{ width: '100%' }}>
+    <Space direction="vertical" size={24} style={{ width: '100%' }}>
       <Card className="glass-card hero-panel">
         <Tag className="hero-tag" variant="filled">
-          Избранное
+          Сохранённые
         </Tag>
         <Typography.Title level={2} style={{ margin: '16px 0 8px' }}>
-          Ваши любимые книги
+          Ваши сохранённые книги
         </Typography.Title>
         <Typography.Paragraph className="section-description">
-          Здесь собраны публикации, которые вы отметили как понравившиеся.
+          Здесь собраны книги, которые вы сохранили и хотите быстро открыть позже.
         </Typography.Paragraph>
       </Card>
 
       <Card className="glass-card" loading={loading}>
         {favorites.length ? (
-          <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
             {favorites.map((item) => (
               <Card key={item.id} className="inner-highlight">
                 <div className="team-member">
@@ -63,22 +74,10 @@ const FavoritesPage = () => {
                   </Space>
 
                   <Space wrap>
-                    <Button
-                      icon={<EyeOutlined />}
-                      onClick={async () => {
-                        await trackView(item.id)
-                      }}
-                    >
+                    <Button icon={<EyeOutlined />} onClick={() => navigate(`/reader/${item.id}`)}>
                       Открыть
                     </Button>
-                    <Button
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={async () => {
-                        await toggleFavorite(item)
-                        await fetchFavorites()
-                      }}
-                    >
+                    <Button danger icon={<DeleteOutlined />} onClick={() => void handleRemoveFavorite(item)}>
                       Удалить
                     </Button>
                   </Space>
@@ -87,7 +86,7 @@ const FavoritesPage = () => {
             ))}
           </Space>
         ) : (
-          <Empty description="В избранном пока пусто" />
+          <Empty description="В сохранённых книгах пока пусто" />
         )}
       </Card>
     </Space>

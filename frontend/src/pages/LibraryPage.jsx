@@ -1,7 +1,7 @@
-import { BookOutlined, HeartFilled, HeartOutlined, ReadOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Input, Segmented, Skeleton, Space, Tag, Typography } from 'antd'
+import { Card, Input, Segmented, Space, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import BookList from '../components/BookList.jsx'
 import { useLibrary } from '../hooks/useLibrary.js'
 
 const sortOptions = [
@@ -13,7 +13,7 @@ const sortOptions = [
 const LibraryPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { categories, currentUser, loadBooks, toggleFavorite, notifyError } = useLibrary()
+  const { categories, currentUser, favoriteIds, loadBooks, toggleFavorite, notifyError } = useLibrary()
 
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -81,6 +81,14 @@ const LibraryPage = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleToggleFavorite = async (book) => {
+    try {
+      await toggleFavorite(book)
+    } catch (error) {
+      notifyError(error.message)
+    }
+  }
 
   return (
     <div className="library-layout">
@@ -157,83 +165,15 @@ const LibraryPage = () => {
           </div>
         </Card>
 
-        {loading ? (
-          <Card className="feature-surface">
-            <Skeleton active paragraph={{ rows: 12 }} />
-          </Card>
-        ) : books.length ? (
-          <div className="library-list">
-            {books.map((book) => (
-              <Card key={book.id} className="library-row">
-                <div className="library-row-cover" style={{ background: `linear-gradient(135deg, ${book.coverTone}, #0f172a)` }}>
-                  <span>{book.publishYear}</span>
-                </div>
-
-                <div className="library-row-copy">
-                  <div className="library-row-head">
-                    <div>
-                      <Typography.Title level={4} style={{ margin: 0 }}>
-                        {book.title}
-                      </Typography.Title>
-                      <Typography.Text className="muted-copy">
-                        {book.author} • {book.categoryName}
-                      </Typography.Text>
-                    </div>
-                    <Space wrap>
-                      <Tag>{book.theme || 'Без темы'}</Tag>
-                      <Tag>{book.openCount} открытий</Tag>
-                      <Tag color={book.readerType === 'file' ? 'blue' : 'purple'}>
-                        {book.readerType === 'file' ? String(book.format).toUpperCase() : 'Текст'}
-                      </Tag>
-                      {currentUser?.role === 'teacher' ? (
-                        <Tag color={book.published ? 'green' : 'orange'}>
-                          {book.published ? 'Опубликовано' : 'Черновик'}
-                        </Tag>
-                      ) : null}
-                    </Space>
-                  </div>
-
-                  <Typography.Paragraph className="muted-copy" style={{ marginBottom: 0 }}>
-                    {book.description || book.previewText}
-                  </Typography.Paragraph>
-
-                  <div className="library-row-footer">
-                    <div className="book-inline-meta">
-                      <span>{book.progressPercent || 0}% прочитано</span>
-                      <span>{book.estimatedMinutes} мин</span>
-                      <span>{book.sourceLabel}</span>
-                    </div>
-
-                    <Space wrap>
-                      <Button
-                        type="primary"
-                        icon={<ReadOutlined />}
-                        onClick={() => navigate(`/reader/${book.id}`)}
-                      >
-                        Открыть
-                      </Button>
-                      <Button
-                        icon={book.isFavorite ? <HeartFilled /> : <HeartOutlined />}
-                        onClick={() => toggleFavorite(book)}
-                      >
-                        {book.isFavorite ? 'Сохранено' : 'Сохранить'}
-                      </Button>
-                      {currentUser?.role === 'teacher' ? (
-                        <Button icon={<BookOutlined />} onClick={() => navigate('/teacher')}>
-                          Управление
-                        </Button>
-                      ) : null}
-                    </Space>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="feature-surface">
-            <Empty description="Книги не найдены." />
-          </Card>
-        )}
+        <BookList
+          books={books}
+          loading={loading}
+          currentUser={currentUser}
+          favoriteIds={favoriteIds}
+          onOpenBook={(book) => navigate(`/reader/${book.id}`)}
+          onToggleFavorite={handleToggleFavorite}
+          onManageBooks={() => navigate('/teacher')}
+        />
       </div>
     </div>
   )

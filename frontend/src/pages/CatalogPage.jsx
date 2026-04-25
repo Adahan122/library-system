@@ -4,7 +4,7 @@ import { BookOutlined, EyeOutlined, HeartFilled, HeartOutlined } from '@ant-desi
 import { useLibrary } from '../hooks/useLibrary.js'
 
 const CatalogPage = () => {
-  const { categories, loadBooks, toggleFavorite, trackView, notifyError } = useLibrary()
+  const { categories, favoriteIds, loadBooks, toggleFavorite, trackView, notifyError } = useLibrary()
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [categoryId, setCategoryId] = useState('all')
@@ -33,6 +33,14 @@ const CatalogPage = () => {
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleToggleFavorite = async (book) => {
+    try {
+      await toggleFavorite(book)
+    } catch (error) {
+      notifyError(error.message)
+    }
+  }
 
   const columns = [
     {
@@ -65,27 +73,31 @@ const CatalogPage = () => {
       title: 'Действия',
       key: 'actions',
       align: 'right',
-      render: (_, record) => (
-        <Space>
-          <Tooltip title={record.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}>
-            <Button
-              type={record.isFavorite ? 'primary' : 'default'}
-              icon={record.isFavorite ? <HeartFilled /> : <HeartOutlined />}
-              onClick={() => toggleFavorite(record)}
-            />
-          </Tooltip>
-          <Tooltip title="Отметить просмотр">
-            <Button
-              icon={<EyeOutlined />}
-              onClick={async () => {
-                await trackView(record.id)
-              }}
-            >
-              Открыть
-            </Button>
-          </Tooltip>
-        </Space>
-      ),
+      render: (_, record) => {
+        const isFavorite = favoriteIds.includes(record.id)
+
+        return (
+          <Space>
+            <Tooltip title={isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}>
+              <Button
+                type={isFavorite ? 'primary' : 'default'}
+                icon={isFavorite ? <HeartFilled /> : <HeartOutlined />}
+                onClick={() => void handleToggleFavorite(record)}
+              />
+            </Tooltip>
+            <Tooltip title="Отметить просмотр">
+              <Button
+                icon={<EyeOutlined />}
+                onClick={async () => {
+                  await trackView(record.id)
+                }}
+              >
+                Открыть
+              </Button>
+            </Tooltip>
+          </Space>
+        )
+      },
     },
   ]
 

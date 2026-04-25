@@ -1,16 +1,14 @@
-import { Avatar, Button, Drawer, Space, Typography } from 'antd'
+import { Button, Drawer, Typography } from 'antd'
 import {
   BookOutlined,
+  HeartOutlined,
   HomeOutlined,
   LogoutOutlined,
-  MenuOutlined,
-  MoonOutlined,
   ReadOutlined,
-  SunOutlined,
-  UserOutlined,
 } from '@ant-design/icons'
 import { useMemo, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import Header from '../components/Header.jsx'
 import { useLibrary } from '../hooks/useLibrary.js'
 
 const navLinkClassName = ({ isActive }) => `nav-link${isActive ? ' nav-link-active' : ''}`
@@ -18,14 +16,13 @@ const navLinkClassName = ({ isActive }) => `nav-link${isActive ? ' nav-link-acti
 const UserLayout = () => {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
-  const navigate = useNavigate()
   const { currentUser, logout, uiTheme, switchTheme } = useLibrary()
 
   const navItems = useMemo(() => {
     const items = [
       { to: '/', label: 'Главная', icon: <HomeOutlined /> },
       { to: '/library', label: 'Каталог', icon: <BookOutlined /> },
-      { to: '/profile', label: 'Профиль', icon: <UserOutlined /> },
+      { to: '/favorites', label: 'Сохранённые', icon: <HeartOutlined /> },
     ]
 
     if (currentUser?.role === 'teacher') {
@@ -38,7 +35,9 @@ const UserLayout = () => {
   const titleMap = {
     '/': 'Главная',
     '/library': 'Каталог библиотеки',
+    '/favorites': 'Сохранённые книги',
     '/profile': 'Профиль',
+    '/upload': 'Загрузка книги',
     '/teacher': 'Управление фондом',
   }
 
@@ -48,58 +47,14 @@ const UserLayout = () => {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <button className="brand-block" type="button" onClick={() => navigate('/')}>
-          <span className="brand-mark">
-            <BookOutlined />
-          </span>
-          <span>
-            <Typography.Text strong className="brand-title">
-              LibHub
-            </Typography.Text>
-            <Typography.Text className="brand-subtitle">
-              Электронная библиотека
-            </Typography.Text>
-          </span>
-        </button>
-
-        <nav className="desktop-nav" aria-label="Навигация">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={navLinkClassName}>
-              {item.icon}
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        <Space size={10} className="header-actions">
-          <Button
-            type="text"
-            className="theme-switch"
-            icon={uiTheme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-            onClick={() => switchTheme(uiTheme === 'dark' ? 'light' : 'dark')}
-          />
-          <div className="header-user">
-            <Avatar className="header-avatar">
-              {currentUser?.name?.charAt(0)?.toUpperCase() || 'L'}
-            </Avatar>
-            <div className="header-user-copy">
-              <strong>{currentUser?.name}</strong>
-              <span>{currentUser?.role === 'teacher' ? 'Преподаватель' : 'Студент'}</span>
-            </div>
-          </div>
-          <Button className="desktop-logout" icon={<LogoutOutlined />} onClick={logout}>
-            Выйти
-          </Button>
-          <Button
-            type="text"
-            shape="circle"
-            icon={<MenuOutlined />}
-            className="mobile-menu-button"
-            onClick={() => setDrawerOpen(true)}
-          />
-        </Space>
-      </header>
+      <Header
+        navItems={navItems}
+        currentUser={currentUser}
+        uiTheme={uiTheme}
+        onToggleTheme={() => switchTheme(uiTheme === 'dark' ? 'light' : 'dark')}
+        onLogout={logout}
+        onOpenMenu={() => setDrawerOpen(true)}
+      />
 
       <main className="app-main">
         <section className="page-intro">
