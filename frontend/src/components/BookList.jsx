@@ -53,7 +53,9 @@ const BookList = ({
                   <Tag>{book.theme || 'Без темы'}</Tag>
                   <Tag>{Number(book.openCount || 0)} просмотров</Tag>
                   <Tag color={book.readerType === 'file' || book.file_url ? 'blue' : 'purple'}>
-                    {book.readerType === 'file' || book.file_url ? String(book.format || 'pdf').toUpperCase() : 'Текст'}
+                    {book.readerType === 'file' || book.file_url
+                      ? String(book.format || 'pdf').toUpperCase()
+                      : 'Текст'}
                   </Tag>
                   {currentUser?.role === 'teacher' && typeof book.published === 'boolean' ? (
                     <Tag color={book.published ? 'green' : 'orange'}>
