@@ -3,7 +3,7 @@ import { Button, Result, Space, Spin, Typography } from 'antd'
 
 const BookReader = ({ book, fileUrl = '', loading = false, error = '' }) => {
   const resolvedFileUrl = fileUrl || book?.file_url || book?.fileUrl || ''
-  const resolvedExternalUrl = book?.external_url || book?.externalUrl || book?.sourceUrl || ''
+  const resolvedExternalUrl = book?.external_url || book?.externalUrl || ''
   const embedUrl = resolvedFileUrl || resolvedExternalUrl
 
   if (loading) {

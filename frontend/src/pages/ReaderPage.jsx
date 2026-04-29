@@ -83,7 +83,7 @@ const ReaderPage = () => {
   const sections = book?.content || []
   const currentSection = sections[currentPosition] || ''
   const fileUrl = book?.file_url || book?.fileUrl || ''
-  const externalUrl = book?.external_url || book?.externalUrl || book?.sourceUrl || ''
+  const externalUrl = book?.external_url || book?.externalUrl || ''
   const hasEmbeddedReader = Boolean(book?.readerType === 'file' || fileUrl || externalUrl)
 
   const percent = useMemo(() => {

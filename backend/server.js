@@ -587,6 +587,64 @@ const normalizeFileFormat = (value) => {
   return ''
 }
 
+const getUploadedBookSourcePathname = (sourceUrl) => {
+  const normalized = String(sourceUrl || '').trim()
+  if (!normalized) {
+    return ''
+  }
+
+  try {
+    return new URL(normalized).pathname || ''
+  } catch {
+    return normalized.startsWith('/') ? normalized : ''
+  }
+}
+
+const resolveUploadedBookSourceUrl = (sourceUrl) => {
+  const normalized = String(sourceUrl || '').trim()
+  if (!normalized) {
+    return ''
+  }
+
+  try {
+    const parsed = new URL(normalized)
+    const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(parsed.hostname)
+
+    if (!isLocalHost && ['http:', 'https:'].includes(parsed.protocol)) {
+      return parsed.toString()
+    }
+
+    if (DJANGO_API_ORIGIN && parsed.pathname) {
+      return new URL(`${parsed.pathname}${parsed.search}`, DJANGO_API_ORIGIN).toString()
+    }
+  } catch {
+    if (DJANGO_API_ORIGIN && normalized.startsWith('/')) {
+      return new URL(normalized, DJANGO_API_ORIGIN).toString()
+    }
+  }
+
+  return ''
+}
+
+const getUploadedBookLocalPath = (sourceUrl) => {
+  const pathname = getUploadedBookSourcePathname(sourceUrl)
+  if (!pathname.startsWith('/media/')) {
+    return ''
+  }
+
+  const relativePath = pathname.replace(/^\/+/, '')
+  const candidateRoots = [DATA_DIR, BACKEND_DIR]
+
+  for (const rootPath of candidateRoots) {
+    const candidatePath = path.resolve(rootPath, relativePath)
+    if (isSafeChildPath(candidatePath, rootPath) && existsSync(candidatePath)) {
+      return candidatePath
+    }
+  }
+
+  return ''
+}
+
 const getUrlFormat = (value) => {
   try {
     const pathname = new URL(value).pathname
@@ -1090,13 +1148,7 @@ const normalizeBook = (book, data, userId, includeContent = false) => {
   const favorites = data.favorites.filter((favorite) => favorite.userId === userId)
   const progress = getUserProgress(data, userId, book.id)
   const categoryName = getCategoryMap(data.categories)[book.categoryId] ?? 'Без категории'
-  const proxiedFileUrl =
-    book.readerType === 'file' && ['local-file', 'remote-file'].includes(book.sourceKind)
-      ? `/api/books/${book.id}/file`
-      : ''
-  const directFileUrl =
-    book.readerType === 'file' && book.sourceKind === 'uploaded-file' ? book.sourceUrl || '' : ''
-  const fileUrl = directFileUrl || proxiedFileUrl
+  const fileUrl = book.readerType === 'file' ? `/api/books/${book.id}/file` : ''
   const externalUrl = book.sourceKind === 'remote-file' ? book.sourceUrl || '' : ''
   const normalizedPublishDate = normalizePublishDate(book.publishDate)
 
@@ -1637,6 +1689,49 @@ const serveBookFile = async (request, response, data, user, book) => {
       return
     } catch {
       sendJson(response, 502, { message: 'Не удалось получить удалённый файл.' })
+      return
+    }
+  }
+
+  if (book.sourceKind === 'uploaded-file') {
+    const localPath = getUploadedBookLocalPath(book.sourceUrl)
+    if (localPath) {
+      response.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': CONTENT_TYPES[book.format] || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${path.basename(localPath)}"`,
+      })
+
+      createReadStream(localPath).pipe(response)
+      return
+    }
+
+    const targetUrl = resolveUploadedBookSourceUrl(book.sourceUrl)
+    if (!targetUrl) {
+      sendJson(response, 404, { message: 'Файл книги недоступен.' })
+      return
+    }
+
+    try {
+      const uploaded = await fetch(targetUrl)
+      if (!uploaded.ok) {
+        sendJson(response, 502, { message: 'Не удалось получить загруженный файл.' })
+        return
+      }
+
+      const buffer = Buffer.from(await uploaded.arrayBuffer())
+      response.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type':
+          uploaded.headers.get('content-type') ||
+          CONTENT_TYPES[book.format] ||
+          'application/octet-stream',
+        'Content-Disposition': `inline; filename="${book.title}.${book.format}"`,
+      })
+      response.end(buffer)
+      return
+    } catch {
+      sendJson(response, 502, { message: 'Не удалось получить загруженный файл.' })
       return
     }
   }
