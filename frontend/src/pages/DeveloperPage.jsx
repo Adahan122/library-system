@@ -25,7 +25,6 @@ import {
   Typography,
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import Upload from '../components/Upload.jsx'
 import { useLibrary } from '../hooks/useLibrary.js'
 import {
@@ -47,7 +46,6 @@ const roleFilterOptions = [
 ]
 
 const DeveloperPage = () => {
-  const navigate = useNavigate()
   const [categoryForm] = Form.useForm()
   const {
     currentUser,
@@ -66,6 +64,7 @@ const DeveloperPage = () => {
     deleteAdminUser,
     notifyError,
     notifySuccess,
+    openBook,
   } = useLibrary()
 
   const [books, setBooks] = useState([])
@@ -236,7 +235,7 @@ const DeveloperPage = () => {
       align: 'right',
       render: (_, record) => (
         <Space wrap>
-          <Button icon={<ReadOutlined />} onClick={() => navigate(`/reader/${record.id}`)}>
+          <Button icon={<ReadOutlined />} onClick={() => void openBook(record)}>
             Открыть
           </Button>
           <Button

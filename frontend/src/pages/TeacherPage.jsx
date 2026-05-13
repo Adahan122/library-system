@@ -37,6 +37,7 @@ const TeacherPage = () => {
     deleteCategory,
     notifyError,
     notifySuccess,
+    openBook,
   } = useLibrary()
 
   const [books, setBooks] = useState([])
@@ -138,7 +139,7 @@ const TeacherPage = () => {
       align: 'right',
       render: (_, record) => (
         <Space wrap>
-          <Button icon={<EyeOutlined />} onClick={() => navigate(`/reader/${record.id}`)}>
+          <Button icon={<EyeOutlined />} onClick={() => void openBook(record)}>
             Открыть
           </Button>
           <Button

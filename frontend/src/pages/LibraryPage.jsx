@@ -13,7 +13,8 @@ const sortOptions = [
 const LibraryPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { categories, currentUser, favoriteIds, loadBooks, toggleFavorite, notifyError } = useLibrary()
+  const { categories, currentUser, favoriteIds, loadBooks, toggleFavorite, notifyError, openBook } =
+    useLibrary()
 
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -170,7 +171,7 @@ const LibraryPage = () => {
           loading={loading}
           currentUser={currentUser}
           favoriteIds={favoriteIds}
-          onOpenBook={(book) => navigate(`/reader/${book.id}`)}
+          onOpenBook={(book) => void openBook(book)}
           onToggleFavorite={handleToggleFavorite}
           onManageBooks={() => navigate('/teacher')}
         />

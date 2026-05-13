@@ -155,6 +155,36 @@ const uploadFormData = async (path, formData, token, options = {}) => {
   return payload
 }
 
+export const isNodeFileBook = (book) =>
+  Boolean(book && (book.readerType === 'file' || book.file_url || book.fileUrl))
+
+export const openNodeBookFileInNewTab = async (bookId, token) => {
+  let response
+  try {
+    response = await fetch(buildUrl(`/books/${bookId}/file`), {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+  } catch {
+    throw new Error(normalizeUiMessage(NODE_BACKEND_ERROR))
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(extractErrorMessage(payload))
+  }
+
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const win = window.open(objectUrl, '_blank', 'noopener,noreferrer')
+  if (!win) {
+    URL.revokeObjectURL(objectUrl)
+    throw new Error('Разрешите всплывающие окна для этого сайта.')
+  }
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 120000)
+}
+
 export const api = {
   buildUrl,
   buildDjangoUrl,

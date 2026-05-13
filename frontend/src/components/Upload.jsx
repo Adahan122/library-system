@@ -13,7 +13,6 @@ import {
   Typography,
 } from 'antd'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary.js'
 import { getBookCoverStyle, getBookPublicationLabel } from '../utils/formatters.js'
 
@@ -33,8 +32,7 @@ const Upload = ({ embedded = false, onUploaded }) => {
   const watchedAuthor = Form.useWatch('author', form)
   const watchedCoverTone = Form.useWatch('coverTone', form)
   const watchedPublishDate = Form.useWatch('publishDate', form)
-  const navigate = useNavigate()
-  const { categories, uploadBook, notifyError, notifySuccess } = useLibrary()
+  const { categories, uploadBook, notifyError, notifySuccess, openBook } = useLibrary()
   const [bookFile, setBookFile] = useState(null)
   const [coverFileName, setCoverFileName] = useState('')
   const [coverPreview, setCoverPreview] = useState('')
@@ -237,7 +235,7 @@ const Upload = ({ embedded = false, onUploaded }) => {
                 </Button>
 
                 {uploadedBook?.id ? (
-                  <Button onClick={() => navigate(`/reader/${uploadedBook.id}`)}>Открыть книгу</Button>
+                  <Button onClick={() => void openBook(uploadedBook)}>Открыть книгу</Button>
                 ) : null}
               </Space>
             </Form>

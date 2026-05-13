@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { message } from 'antd'
-import { api, normalizeUiMessage } from '../utils/api.js'
+import { useNavigate } from 'react-router-dom'
+import { api, isNodeFileBook, normalizeUiMessage, openNodeBookFileInNewTab } from '../utils/api.js'
 import { LibraryContext } from './library-context.js'
 
 const SESSION_TOKEN_KEY = 'libhub_session_token'
@@ -8,6 +9,7 @@ const THEME_KEY = 'libhub_theme'
 const STUDENT_GUIDE_KEY = 'libhub_show_student_guide'
 
 export const LibraryProvider = ({ children }) => {
+  const navigate = useNavigate()
   const [messageApi, contextHolder] = message.useMessage()
   const [sessionToken, setSessionToken] = useState('')
   const [currentUser, setCurrentUser] = useState(null)
@@ -249,6 +251,24 @@ export const LibraryProvider = ({ children }) => {
     setUiTheme(nextTheme)
   }
 
+  const openBook = useCallback(
+    async (book) => {
+      if (!book?.id) {
+        return
+      }
+      if (isNodeFileBook(book)) {
+        try {
+          await openNodeBookFileInNewTab(book.id, sessionToken)
+        } catch (error) {
+          notifyError(error instanceof Error ? error.message : 'Ошибка.')
+        }
+        return
+      }
+      navigate(`/reader/${book.id}`)
+    },
+    [navigate, sessionToken],
+  )
+
   const value = {
     sessionToken,
     currentUser,
@@ -291,6 +311,7 @@ export const LibraryProvider = ({ children }) => {
     switchTheme,
     notifySuccess,
     notifyError,
+    openBook,
   }
 
   return (

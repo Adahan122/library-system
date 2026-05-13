@@ -9,7 +9,7 @@ const STUDENT_GUIDE_KEY = 'libhub_show_student_guide'
 
 const HomePage = () => {
   const navigate = useNavigate()
-  const { categories, currentUser, loadBooks, stats, notifyError } = useLibrary()
+  const { categories, currentUser, loadBooks, stats, notifyError, openBook } = useLibrary()
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -187,7 +187,7 @@ const HomePage = () => {
                     <Tag>{book.categoryName}</Tag>
                     <span>{book.openCount} открытий</span>
                   </div>
-                  <Button type="primary" onClick={() => navigate(`/reader/${book.id}`)}>
+                  <Button type="primary" onClick={() => void openBook(book)}>
                     Открыть
                   </Button>
                 </div>
@@ -218,7 +218,7 @@ const HomePage = () => {
                     key={book.id}
                     type="button"
                     className="rank-item"
-                    onClick={() => navigate(`/reader/${book.id}`)}
+                    onClick={() => void openBook(book)}
                   >
                     <span className="rank-number">{String(index + 1).padStart(2, '0')}</span>
                     <div className="rank-copy">

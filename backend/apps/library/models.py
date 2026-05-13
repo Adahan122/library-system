@@ -11,7 +11,8 @@ ALLOWED_BOOK_EXTENSIONS = {'.pdf', '.epub'}
 
 def book_upload_to(instance, filename):
     suffix = Path(filename).suffix.lower()
-    base_name = slugify(instance.title or Path(filename).stem) or 'book'
+    stem = Path(filename).stem
+    base_name = slugify(instance.title or stem, allow_unicode=True) or 'book'
     return f'books/{base_name}-{uuid.uuid4().hex[:12]}{suffix}'
 
 

@@ -1,5 +1,5 @@
 ﻿import { randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
-import { createReadStream, existsSync, readFileSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
@@ -13,11 +13,28 @@ const REPO_DIR = path.resolve(BACKEND_DIR, '..')
 const DATA_DIR = process.env.LIBHUB_DATA_DIR?.trim()
   ? path.resolve(process.env.LIBHUB_DATA_DIR)
   : BACKEND_DIR
+const STORAGE_DIR = process.env.LIBHUB_STORAGE_DIR?.trim()
+  ? path.resolve(process.env.LIBHUB_STORAGE_DIR)
+  : ''
 const DATA_PATH = path.join(DATA_DIR, 'data.json')
 const SQLITE_DB_PATH = path.join(DATA_DIR, 'db.sqlite3')
 const DEFAULT_DATA_TEMPLATE_PATH = path.join(BACKEND_DIR, 'default-data.json')
 const FRONTEND_DIST_DIR = path.join(REPO_DIR, 'frontend', 'dist')
 const DJANGO_API_ORIGIN = (process.env.DJANGO_API_ORIGIN || '').trim().replace(/\/+$/, '')
+/** fallback when env is unset (local dev); render sets DJANGO_API_ORIGIN explicitly */
+const DEFAULT_DJANGO_DEV_ORIGIN = 'http://127.0.0.1:8000'
+
+const normalizeDjangoFetchUrl = (urlString) => {
+  try {
+    const next = new URL(urlString)
+    if (next.hostname === 'localhost') {
+      next.hostname = '127.0.0.1'
+    }
+    return next.toString()
+  } catch {
+    return urlString
+  }
+}
 
 const sessions = new Map()
 const DEVELOPER_USER_ID = 'developer-root'
@@ -263,8 +280,15 @@ const ensureStorageFileParent = async (filePath) => {
   await mkdir(path.dirname(filePath), { recursive: true })
 }
 
-const isSafeChildPath = (candidatePath, basePath) =>
-  candidatePath === basePath || candidatePath.startsWith(`${basePath}${path.sep}`)
+const isSafeChildPath = (candidatePath, basePath) => {
+  const resolvedFile = path.resolve(candidatePath)
+  const resolvedBase = path.resolve(basePath)
+  if (resolvedFile === resolvedBase) {
+    return true
+  }
+  const rel = path.relative(resolvedBase, resolvedFile)
+  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
 
 const buildForwardHeaders = (headers) => {
   const forwardHeaders = new Headers()
@@ -594,9 +618,25 @@ const getUploadedBookSourcePathname = (sourceUrl) => {
   }
 
   try {
-    return new URL(normalized).pathname || ''
+    const raw = new URL(normalized).pathname || ''
+    let decoded
+    try {
+      decoded = decodeURIComponent(raw)
+    } catch {
+      decoded = raw
+    }
+    try {
+      return decoded.normalize('NFC')
+    } catch {
+      return decoded
+    }
   } catch {
-    return normalized.startsWith('/') ? normalized : ''
+    const tail = normalized.startsWith('/') ? normalized : ''
+    try {
+      return tail ? tail.normalize('NFC') : ''
+    } catch {
+      return tail
+    }
   }
 }
 
@@ -604,6 +644,16 @@ const resolveUploadedBookSourceUrl = (sourceUrl) => {
   const normalized = String(sourceUrl || '').trim()
   if (!normalized) {
     return ''
+  }
+
+  const djangoBase = DJANGO_API_ORIGIN || DEFAULT_DJANGO_DEV_ORIGIN
+
+  if (normalized.startsWith('/media/')) {
+    try {
+      return new URL(normalized, djangoBase).toString()
+    } catch {
+      return ''
+    }
   }
 
   try {
@@ -617,9 +667,17 @@ const resolveUploadedBookSourceUrl = (sourceUrl) => {
     if (DJANGO_API_ORIGIN && parsed.pathname) {
       return new URL(`${parsed.pathname}${parsed.search}`, DJANGO_API_ORIGIN).toString()
     }
+
+    if (isLocalHost && ['http:', 'https:'].includes(parsed.protocol)) {
+      return parsed.toString()
+    }
   } catch {
-    if (DJANGO_API_ORIGIN && normalized.startsWith('/')) {
-      return new URL(normalized, DJANGO_API_ORIGIN).toString()
+    if (normalized.startsWith('/')) {
+      try {
+        return new URL(normalized, djangoBase).toString()
+      } catch {
+        return ''
+      }
     }
   }
 
@@ -633,7 +691,7 @@ const getUploadedBookLocalPath = (sourceUrl) => {
   }
 
   const relativePath = pathname.replace(/^\/+/, '')
-  const candidateRoots = [DATA_DIR, BACKEND_DIR]
+  const candidateRoots = [...new Set([STORAGE_DIR, DATA_DIR, BACKEND_DIR].filter(Boolean))]
 
   for (const rootPath of candidateRoots) {
     const candidatePath = path.resolve(rootPath, relativePath)
@@ -643,6 +701,115 @@ const getUploadedBookLocalPath = (sourceUrl) => {
   }
 
   return ''
+}
+
+const normalizeUnicodeFileName = (value) => {
+  try {
+    return String(value || '').normalize('NFC')
+  } catch {
+    return String(value || '')
+  }
+}
+
+/** scan media/books: exact name, NFC match, or django suffix -hex12.pdf / .epub */
+const findUploadedBookByStoredName = (sourceUrl) => {
+  const pathname = getUploadedBookSourcePathname(sourceUrl)
+  const baseRaw = path.basename(pathname || '')
+  if (!baseRaw || !/\.(pdf|epub)$/i.test(baseRaw)) {
+    return ''
+  }
+
+  const baseNfc = normalizeUnicodeFileName(baseRaw)
+  const nested = path.join('media', 'books', baseNfc)
+  const candidateRoots = [...new Set([STORAGE_DIR, DATA_DIR, BACKEND_DIR].filter(Boolean))]
+
+  for (const rootPath of candidateRoots) {
+    const candidatePath = path.resolve(rootPath, nested)
+    if (isSafeChildPath(candidatePath, rootPath) && existsSync(candidatePath)) {
+      return candidatePath
+    }
+  }
+
+  const suffixMatch = baseNfc.match(/-([a-f0-9]{12})\.(pdf|epub)$/i)
+  const hex12 = suffixMatch ? suffixMatch[1] : ''
+  const extLower = suffixMatch ? suffixMatch[2].toLowerCase() : ''
+
+  for (const rootPath of candidateRoots) {
+    const booksRoot = path.join(rootPath, 'media', 'books')
+    const rootResolved = path.resolve(rootPath)
+    const resolvedBooksRoot = path.resolve(booksRoot)
+    if (!isSafeChildPath(resolvedBooksRoot, rootResolved)) {
+      continue
+    }
+    if (!existsSync(resolvedBooksRoot)) {
+      continue
+    }
+
+    let entries
+    try {
+      entries = readdirSync(resolvedBooksRoot, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const ent of entries) {
+      if (!ent.isFile()) {
+        continue
+      }
+      const n = ent.name
+      const nNfc = normalizeUnicodeFileName(n)
+      if (nNfc === baseNfc || n === baseRaw) {
+        const full = path.join(resolvedBooksRoot, n)
+        if (isSafeChildPath(full, rootResolved)) {
+          return full
+        }
+      }
+      if (hex12 && extLower && n.toLowerCase().endsWith(`-${hex12}.${extLower}`)) {
+        const full = path.join(resolvedBooksRoot, n)
+        if (isSafeChildPath(full, rootResolved)) {
+          return full
+        }
+      }
+    }
+  }
+
+  return ''
+}
+
+const resolveUploadedBookLocalFile = (sourceUrl) =>
+  getUploadedBookLocalPath(sourceUrl) || findUploadedBookByStoredName(sourceUrl)
+
+const uploadedBookCacheExt = (book) => {
+  const fmt = normalizeFileFormat(book?.format)
+  return fmt === 'epub' ? 'epub' : 'pdf'
+}
+
+const getUploadedBookCachePath = (book) =>
+  path.join(DATA_DIR, 'file-cache', `${book.id}.${uploadedBookCacheExt(book)}`)
+
+const saveUploadedBookCache = async (book, buffer) => {
+  const dest = getUploadedBookCachePath(book)
+  await mkdir(path.dirname(dest), { recursive: true })
+  await writeFile(dest, buffer)
+}
+
+const fetchUploadedBookFileBuffer = async (book) => {
+  const localPath = resolveUploadedBookLocalFile(book.sourceUrl)
+  if (localPath && existsSync(localPath)) {
+    return readFile(localPath)
+  }
+
+  const targetUrl = resolveUploadedBookSourceUrl(book.sourceUrl)
+  if (!targetUrl) {
+    return null
+  }
+
+  const uploaded = await fetch(normalizeDjangoFetchUrl(targetUrl))
+  if (!uploaded.ok) {
+    return null
+  }
+
+  return Buffer.from(await uploaded.arrayBuffer())
 }
 
 const getUrlFormat = (value) => {
@@ -1694,32 +1861,60 @@ const serveBookFile = async (request, response, data, user, book) => {
   }
 
   if (book.sourceKind === 'uploaded-file') {
-    const localPath = getUploadedBookLocalPath(book.sourceUrl)
+    const cachePath = getUploadedBookCachePath(book)
+    if (existsSync(cachePath)) {
+      response.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': CONTENT_TYPES[book.format] || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${path.basename(cachePath)}"`,
+      })
+      createReadStream(cachePath).pipe(response)
+      return
+    }
+
+    const localPath = resolveUploadedBookLocalFile(book.sourceUrl)
     if (localPath) {
+      let buffer
+      try {
+        buffer = await readFile(localPath)
+      } catch {
+        sendJson(response, 404, { message: 'Локальная копия файла недоступна.' })
+        return
+      }
+
+      void saveUploadedBookCache(book, buffer).catch(() => {})
       response.writeHead(200, {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': CONTENT_TYPES[book.format] || 'application/octet-stream',
         'Content-Disposition': `inline; filename="${path.basename(localPath)}"`,
       })
-
-      createReadStream(localPath).pipe(response)
+      response.end(buffer)
       return
     }
 
     const targetUrl = resolveUploadedBookSourceUrl(book.sourceUrl)
     if (!targetUrl) {
-      sendJson(response, 404, { message: 'Файл книги недоступен.' })
+      sendJson(response, 404, {
+        message:
+          'Файл книги недоступен: нет пути к django (проверьте sourceUrl) или файла на диске. Запустите manage.py runserver и откройте книгу снова.',
+      })
       return
     }
 
     try {
-      const uploaded = await fetch(targetUrl)
+      const uploaded = await fetch(normalizeDjangoFetchUrl(targetUrl))
       if (!uploaded.ok) {
-        sendJson(response, 502, { message: 'Не удалось получить загруженный файл.' })
+        sendJson(response, 502, {
+          message:
+            'Не удалось получить файл с django (код ' +
+            uploaded.status +
+            '). Запустите: python manage.py runserver 8000. Если файла нет в backend/media/books — загрузите книгу снова.',
+        })
         return
       }
 
       const buffer = Buffer.from(await uploaded.arrayBuffer())
+      void saveUploadedBookCache(book, buffer).catch(() => {})
       response.writeHead(200, {
         'Access-Control-Allow-Origin': '*',
         'Content-Type':
@@ -1730,8 +1925,15 @@ const serveBookFile = async (request, response, data, user, book) => {
       })
       response.end(buffer)
       return
-    } catch {
-      sendJson(response, 502, { message: 'Не удалось получить загруженный файл.' })
+    } catch (error) {
+      const hint =
+        error instanceof Error && error.message ? error.message : 'ошибка сети'
+      sendJson(response, 502, {
+        message:
+          'Не удалось связаться с django (' +
+          hint +
+          '). Запустите: python manage.py runserver 8000 (порт 8000).',
+      })
       return
     }
   }
@@ -2492,6 +2694,15 @@ createServer(async (request, response) => {
       )
 
       data.books.unshift(created)
+      try {
+        const buf = await fetchUploadedBookFileBuffer(created)
+        if (buf) {
+          await saveUploadedBookCache(created, buf)
+        }
+      } catch {
+        /* каталог уже сохраним; кэш догонит при первом get /file */
+      }
+
       await saveData(data)
 
       sendJson(response, 201, normalizeBook(created, data, auth.user.id))

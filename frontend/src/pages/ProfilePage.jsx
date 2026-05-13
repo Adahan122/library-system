@@ -4,13 +4,13 @@ import { useLibrary } from '../hooks/useLibrary.js'
 
 const ProfilePage = () => {
   const navigate = useNavigate()
-  const { currentUser, stats } = useLibrary()
+  const { currentUser, stats, openBook } = useLibrary()
 
   return (
     <Profile
       user={currentUser}
       stats={stats}
-      onOpenBook={(book) => navigate(`/reader/${book.id}`)}
+      onOpenBook={(book) => void openBook(book)}
       onOpenLibrary={() => navigate('/library')}
       onOpenFavorites={() => navigate('/favorites')}
       onOpenTeacher={() => navigate('/teacher')}

@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Avatar, Button, Card, Empty, Space, Tag, Typography } from 'antd'
 import { BookOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary.js'
 
 const FavoritesPage = () => {
-  const navigate = useNavigate()
-  const { loadBooks, toggleFavorite, notifyError } = useLibrary()
+  const { loadBooks, toggleFavorite, notifyError, openBook } = useLibrary()
   const [favorites, setFavorites] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -74,7 +72,7 @@ const FavoritesPage = () => {
                   </Space>
 
                   <Space wrap>
-                    <Button icon={<EyeOutlined />} onClick={() => navigate(`/reader/${item.id}`)}>
+                    <Button icon={<EyeOutlined />} onClick={() => void openBook(item)}>
                       Открыть
                     </Button>
                     <Button danger icon={<DeleteOutlined />} onClick={() => void handleRemoveFavorite(item)}>

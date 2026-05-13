@@ -41,6 +41,7 @@ const ReaderPage = () => {
   const { bookId } = useParams()
   const {
     currentUser,
+    sessionToken,
     loadBook,
     loadUploadedBook,
     trackView,
@@ -465,7 +466,7 @@ const ReaderPage = () => {
 
           <Col xs={24} xl={18}>
             <Card className="reader-file-card">
-              <BookReader book={book} fileUrl={fileUrl} error={readerError} />
+              <BookReader book={book} fileUrl={fileUrl} error={readerError} authToken={sessionToken} />
             </Card>
           </Col>
         </Row>
